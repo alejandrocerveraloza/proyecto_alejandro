@@ -3,40 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI HelpDesk Router - Demo</title>
+    <title>AI HelpDesk Router - ASIR</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background-color: #0f172a; color: #f1f5f9; font-family: 'Inter', sans-serif; }
-        .main-card { background: #1e293b; border: 1px solid #334155; border-radius: 1rem; margin-top: 3rem; overflow: hidden; }
-        .header { background: #334155; padding: 1.5rem; text-align: center; }
-        .badge-cat { background: #3b82f6; }
-        .badge-ia { background: #10b981; }
-        #resp-area { background: #0f172a; border: 1px solid #334155; padding: 1rem; border-radius: 0.5rem; min-height: 100px; white-space: pre-line; }
-        .loading { display: none; }
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+        }
+        body { background-color: var(--bg-color); color: #f1f5f9; font-family: 'Inter', sans-serif; transition: 0.5s; }
+        .main-card { background: var(--card-bg); border: 1px solid #334155; border-radius: 1rem; margin-top: 3rem; transition: 0.5s; }
+        .header { background: #334155; padding: 1.5rem; text-align: center; border-radius: 1rem 1rem 0 0; }
+        
+        /* Colores dinámicos para el video */
+        .mode-codigo { border-left: 10px solid #d97706 !important; } /* Naranja Claude */
+        .mode-red { border-left: 10px solid #3b82f6 !important; }    /* Azul Grok */
+        .mode-general { border-left: 10px solid #10b981 !important; } /* Verde GPT */
+        
+        #resp-area { background: #0f172a; border: 1px solid #334155; padding: 1.2rem; border-radius: 0.5rem; min-height: 100px; white-space: pre-line; color: #cbd5e1; }
+        .badge-ia { font-size: 1rem; padding: 10px 15px; }
     </style>
 </head>
 <body>
-    <div class="container" style="max-width: 750px;">
-        <div class="main-card shadow-lg">
+    <div class="container" style="max-width: 800px;">
+        <div id="card-principal" class="main-card shadow-lg">
             <div class="header">
                 <h2 class="h4 mb-0">🖥️ HelpDesk AI Router</h2>
-                <small class="text-secondary">Sistema de Enrutamiento Inteligente - ASIR</small>
+                <small class="text-info fw-bold">PROYECTO ASIR - ENRUTAMIENTO MULTI-MODELO</small>
             </div>
             <div class="p-4">
                 <div class="mb-3">
-                    <label class="form-label">Describe la incidencia o consulta:</label>
-                    <textarea id="prompt" class="form-control bg-dark text-white border-secondary" rows="3" placeholder="Ej: ¿Cómo resetear un switch Cisco?"></textarea>
+                    <label class="form-label">Introduce la incidencia técnica:</label>
+                    <textarea id="prompt" class="form-control bg-dark text-white border-secondary" rows="3" placeholder="Ej: Necesito un script de Python o configurar un switch..."></textarea>
                 </div>
                 <button onclick="procesar()" id="btnAction" class="btn btn-primary w-100 py-2 fw-bold">ENVIAR A ENRUTADOR</button>
 
                 <div id="resultado" class="mt-4" style="display:none;">
-                    <div class="d-flex justify-content-between mb-3">
-                        <span>Intención: <span id="cat" class="badge badge-cat"></span></span>
-                        <span>Modelo Asignado: <span id="ia" class="badge badge-ia"></span></span>
+                    <div class="row text-center mb-3">
+                        <div class="col">
+                            <small class="text-secondary d-block">CATEGORÍA</small>
+                            <span id="cat" class="badge bg-secondary fs-6"></span>
+                        </div>
+                        <div class="col">
+                            <small class="text-secondary d-block">IA EXPERTA ASIGNADA</small>
+                            <span id="ia" class="badge badge-ia bg-success"></span>
+                        </div>
                     </div>
                     <div class="mt-2">
-                        <strong>Solución sugerida:</strong>
-                        <div id="resp-area" class="mt-2 text-info"></div>
+                        <strong>Solución Técnica Sugerida:</strong>
+                        <div id="resp-area" class="mt-2"></div>
                     </div>
                 </div>
             </div>
@@ -47,10 +61,11 @@
         async function procesar() {
             const prompt = document.getElementById('prompt').value;
             const btn = document.getElementById('btnAction');
+            const card = document.getElementById('card-principal');
             if(!prompt) return;
 
             btn.disabled = true;
-            btn.innerHTML = 'Enrutando...';
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Analizando categoría...';
 
             try {
                 const response = await fetch('/ask', {
@@ -60,12 +75,20 @@
                 });
                 const data = await response.json();
                 
+                // Reset de clases
+                card.classList.remove('mode-codigo', 'mode-red', 'mode-general');
+                
+                // Aplicar estilo según categoría para el video
+                if(data.categoria_detectada === 'codigo') card.classList.add('mode-codigo');
+                else if(data.categoria_detectada === 'red') card.classList.add('mode-red');
+                else card.classList.add('mode-general');
+
                 document.getElementById('resultado').style.display = 'block';
                 document.getElementById('cat').innerText = data.categoria_detectada.toUpperCase();
                 document.getElementById('ia').innerText = data.ia_utilizada;
                 document.getElementById('resp-area').innerText = data.respuesta;
             } catch (e) {
-                alert("Error de conexión");
+                alert("Error de comunicación con el Router.");
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = 'ENVIAR A ENRUTADOR';

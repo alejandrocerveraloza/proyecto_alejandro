@@ -36,15 +36,20 @@ def ask():
             return jsonify({"error": "No prompt"}), 400
 
         # RETO 1: Clasificación
+# RETO 1: Clasificación y Optimización (Súper Estricto)
         clasificacion = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
-                {"role": "system", "content": "Responde SOLO JSON: {'cat': 'red|seguridad|codigo|sql|general', 'p_opt': 'optimizado'}"},
+                {"role": "system", "content": """Responde SOLO JSON. 
+                Reglas de categorías:
+                - Si piden scripts, programación, SQL o comandos: 'cat': 'codigo'
+                - Si piden IPs, VLANs, Switches, Routers: 'cat': 'red'
+                - El resto: 'cat': 'general'
+                Formato: {'cat': 'categoria', 'p_opt': 'prompt optimizado'}"""},
                 {"role": "user", "content": prompt_usuario}
             ],
             response_format={"type": "json_object"}
-        )
-        
+        )        
         info = json.loads(clasificacion.choices[0].message.content)
         categoria = info.get('cat', 'general')
 
