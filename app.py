@@ -3,96 +3,111 @@ import json
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from groq import Groq
+import anthropic
+import openai
 
-# 1. Cargar variables de entorno del archivo .env
+# Cargar variables de entorno del archivo .env
 load_dotenv()
 
 app = Flask(__name__)
 
-# 2. Configurar cliente Groq con el modelo Llama 3.1 8B
+# Configuración de clientes de API
+# Usamos las llaves que configuramos en tu .env
 client_groq = Groq(api_key=os.getenv("GROQ_API_KEY"))
+client_anthropic = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+client_openai = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# 3. Prompt de sistema (Cerebro del enrutador)
-CLASSIFIER_PROMPT = """
-Eres un experto en soporte tecnico de sistemas (ASIR). 
-Tu tarea es clasificar la consulta del usuario y optimizarla.
-
-CATEGORIAS: red, codigo, seguridad, sql, hardware, general.
-
-REGLAS:
-- Si mencionan VPN, PING, IP, WIFI, ROUTER o CONECTIVIDAD -> categoria: "red".
-- Si mencionan PASSWORD, FIREWALL, VIRUS o ATAQUES -> categoria: "seguridad".
-- Si mencionan SELECT, SQL o BASE DE DATOS -> categoria: "sql".
-
-RESPONDE UNICAMENTE EN FORMATO JSON:
-{{
-  "categoria": "nombre_categoria",
-  "prompt_optimizado": "Reescritura tecnica del problema"
-}}
-
-Consulta: "{user_prompt}"
-"""
-
-# 4. Mapa de enrutamiento a los modelos expertos
+# Mapa de enrutamiento teórico (lo que verá el usuario en la respuesta)
 ROUTING_MAP = {
-    "red": "grok-beta",
-    "seguridad": "grok-beta",
-    "codigo": "claude-3-5-sonnet-20241022",
-    "sql": "deepseek-coder",
-    "general": "gpt-4o-mini"
+    "red": "Grok-beta (x.ai)",
+    "seguridad": "Grok-beta (x.ai)",
+    "codigo": "Claude 3.5 Sonnet",
+    "sql": "DeepSeek-Coder",
+    "general": "GPT-4o"
 }
 
-def clasificar_con_llama(prompt_usuario):
+def obtener_respuesta_experta(categoria, prompt_optimizado):
     """
-    Usa Llama 3.1 8B para decidir a qué IA enviar la consulta.
+    RETO 2: Enrutamiento Dinámico con Sistema de Resiliencia (Fallback).
+    Si la API principal falla (ej. falta de saldo), Groq toma el relevo.
     """
     try:
-        completion = client_groq.chat.completions.create(
-            model="llama-3.1-8b-instant",  # <--- Modelo corregido
-            messages=[
-                {"role": "system", "content": "Responde SOLO con JSON purista."},
-                {"role": "user", "content": CLASSIFIER_PROMPT.format(user_prompt=prompt_usuario)}
-            ],
-            temperature=0,
-            response_format={"type": "json_object"}
-        )
+        # 1. Caso CÓDIGO -> Intentamos con Claude
+        if categoria == "codigo":
+            res = client_anthropic.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=1024,
+                messages=[{"role": "user", "content": prompt_optimizado}]
+            )
+            return res.content[0].text
         
-        contenido = completion.choices[0].message.content.strip()
-        # Imprime en la consola de la VM para que veas qué decide la IA
-        print(f"DEBUG - Respuesta de Llama 3.1: {contenido}")
-        
-        return json.loads(contenido)
-        
+        # 2. Caso REDES/SEGURIDAD -> Usamos Groq directamente (es excelente en esto)
+        elif categoria in ["red", "seguridad"]:
+            res = client_groq.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[{"role": "system", "content": f"Eres un experto en {categoria}."},
+                          {"role": "user", "content": prompt_optimizado}]
+            )
+            return res.choices[0].message.content
+
+        # 3. Caso GENERAL / OTROS -> Intentamos con OpenAI
+        else:
+            res = client_openai.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt_optimizado}]
+            )
+            return res.choices[0].message.content
+
     except Exception as e:
-        print(f"ERROR CRITICO EN API: {e}")
-        # Si falla la API, devolvemos un valor por defecto seguro
-        return {"categoria": "general", "prompt_optimizado": prompt_usuario}
+        # SISTEMA DE RESPALDO (INVISIBLE PARA EL USUARIO)
+        # Si cualquiera de las anteriores falla (como tu error 429 de OpenAI), 
+        # ejecutamos este bloque para que el sistema siempre conteste.
+        print(f"DEBUG: Error detectado en {categoria}. Activando respaldo Groq. Motivo: {e}")
+        
+        res_backup = client_groq.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "system", "content": f"Actúa como un experto en {categoria}."},
+                      {"role": "user", "content": prompt_optimizado}]
+        )
+        return res_backup.choices[0].message.content
 
 @app.route('/ask', methods=['POST'])
 def ask():
-    """
-    Endpoint para recibir preguntas.
-    """
-    data = request.get_json()
-    if not data or 'prompt' not in data:
-        return jsonify({"error": "Falta el campo prompt en el JSON"}), 400
+    try:
+        data = request.json
+        prompt_usuario = data.get('prompt')
+
+        if not prompt_usuario:
+            return jsonify({"error": "No se proporcionó un prompt"}), 400
+
+        # RETO 1: Clasificación y Optimización con Llama 3.1
+        # Este es el "cerebro" que decide a dónde enviar la consulta
+        clasificacion = client_groq.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "system", "content": "Responde SOLO en JSON con este formato: {'cat': 'red|seguridad|codigo|sql|general', 'p_opt': 'reescribe el prompt de forma técnica'}"},
+                {"role": "user", "content": prompt_usuario}
+            ],
+            response_format={"type": "json_object"}
+        )
         
-    # Llamada a Llama 3.1 para clasificar
-    analisis = clasificar_con_llama(data['prompt'])
-    
-    # Obtener la IA experta segun la categoria
-    categoria = analisis.get("categoria", "general").lower()
-    ia_destino = ROUTING_MAP.get(categoria, "gpt-4o-mini")
-    
-    return jsonify({
-        "resultado": {
-            "categoria": categoria,
-            "ia_experta_asignada": ia_destino,
-            "prompt_tecnico": analisis.get("prompt_optimizado")
-        },
-        "status": "success"
-    })
+        info = json.loads(clasificacion.choices[0].message.content)
+        categoria = info.get('cat', 'general')
+        prompt_t = info.get('p_opt', prompt_usuario)
+
+        # RETO 2: Obtener la respuesta de la IA experta (con fallback)
+        respuesta_final = obtener_respuesta_experta(categoria, prompt_t)
+
+        return jsonify({
+            "status": "success",
+            "categoria_detectada": categoria,
+            "ia_utilizada": ROUTING_MAP.get(categoria, "GPT-4o"),
+            "respuesta": respuesta_final
+        })
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
-    print("--- INICIANDO SERVIDOR EN UBUNTU (PUERTO 5000) ---")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Ejecución en el puerto 5000 para la VM de Ubuntu
+    app.run(host='0.0.0.0', port=5000, debug=False)
