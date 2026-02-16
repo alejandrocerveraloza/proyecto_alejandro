@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>AI HelpDesk Router - ASIR</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .chat-box { max-width: 600px; margin: 50px auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .badge-info { background-color: #0d6efd; }
+    </style>
+</head>
+<body>
+    <div class="chat-box">
+        <h3 class="text-center mb-4">🖥️ AI HelpDesk Router</h3>
+        <div class="mb-3">
+            <label class="form-label">Describe tu incidencia técnica:</label>
+            <textarea id="prompt" class="form-control" rows="3" placeholder="Ej: No me funciona la VPN..."></textarea>
+        </div>
+        <button onclick="enviarConsulta()" class="btn btn-primary w-100" id="btnEnviar">Enviar a la IA</button>
+        
+        <div id="resultado" class="mt-4" style="display:none;">
+            <hr>
+            <p><strong>Categoría:</strong> <span id="cat" class="badge bg-primary"></span></p>
+            <p><strong>IA Experta:</strong> <span id="ia" class="badge bg-success"></span></p>
+            <div class="p-3 bg-light border rounded">
+                <strong>Respuesta:</strong>
+                <p id="resp" class="mt-2"></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function enviarConsulta() {
+            const prompt = document.getElementById('prompt').value;
+            const btn = document.getElementById('btnEnviar');
+            if(!prompt) return alert("Escribe algo");
+
+            btn.disabled = true;
+            btn.innerText = "Enrutando consulta...";
+
+            const response = await fetch('/ask', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({prompt: prompt})
+            });
+
+            const data = await response.json();
+            
+            document.getElementById('resultado').style.display = 'block';
+            document.getElementById('cat').innerText = data.categoria_detectada;
+            document.getElementById('ia').innerText = data.ia_utilizada;
+            document.getElementById('resp').innerText = data.respuesta;
+            
+            btn.disabled = false;
+            btn.innerText = "Enviar a la IA";
+        }
+    </script>
+</body>
+</html>
